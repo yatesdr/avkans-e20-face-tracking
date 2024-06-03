@@ -11,18 +11,15 @@ import numpy as np
 
 # Instantiate Sanic app
 app = Sanic("ptzTracker")
-app.static("/img/","./app/img")
 app.ctx.db_env=lmdb.open("ptzTracker.db")
-
 tqueues=list()
-
 
 # Thread for doing the actual camera tracking commands.
 # This thread assumes a parked zoom, and tracks a single "face".
 def track_single_without_zoom(cam_ip):
     print("Single face tracking thread started on ",cam_ip)
 
-    model_face = YOLO('app/yolov8n-face.pt')
+    model_face = YOLO('yolov8n-face.pt')
     ndi = AvkansCamera()
     ndi.connect_by_ip(cam_ip)
     frame = ndi.get_cv2_frame()  # First frame takes a second or two, pull it at inits.
@@ -226,7 +223,7 @@ async def main(request):
 
     sources=load_sources_from_db()
     
-    with open("app/html/index.html",'r') as f:
+    with open("html/index.html",'r') as f:
           template=f.read()
 
     scripts=""
