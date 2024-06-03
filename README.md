@@ -24,7 +24,7 @@ Launch the application, then open your web browser.
 python3 app.py
 ```
 
-By default it serves on http://localhost:8089
+By default it serves on http://localhost:8091
 
 1) Add your NDI sources and give them a unique name and IP address.   You will see a preview load to confirm it's working.  
 2) Click the "Start Tracking" button for your assigned source to launch a thread that will search for faces and track them.
