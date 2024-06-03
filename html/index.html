@@ -1,0 +1,83 @@
+<html>
+    <head>
+        <style>
+            .tbl{
+                border: 1px solid black;
+                border-style:solid;
+                padding: 10px;
+                width: 50%;
+                border-collapse: collapse;
+                text-align: center;
+                margin: auto;
+            }
+            .tbl tr td {
+                border: 1px solid black;
+                margin: 0px;
+            }
+            .header {
+                background-color: black;
+                color: white;
+                margin: 10px;
+                padding: 0px;
+                text-align: center;
+                font-family: impact;
+            }
+            .subheader {
+                color: black;
+                margin: 10px;
+                text-align: center;
+            }
+            button {
+                background-color: black;
+                color: white;
+            }
+
+        </style>
+
+        <script>
+            async function addcam(){
+                name = document.getElementById('camname').value
+                ip = document.getElementById('camip').value
+                await fetch(`/addcambyip?camname=${name}&camip=${ip}`)
+                window.location.reload()
+            }
+
+            async function load_image_preview(idx){
+                
+                res= await fetch(`/preview-b64?idx=${idx}`)
+                src_txt= await res.text()
+                document.getElementById(`preview${idx}`).src=src_txt
+                console.log(src_txt)
+            }
+
+            async function searchndi(){
+                res = await fetch('/searchndi')
+                j = await res.text()
+                document.getElementById('ndi_search_results').innerText=j
+                console.log("Json response: ",j)
+            }
+        </script>
+        %SCRIPTS%
+    </head>
+
+    <h1 class="header">NDI Camera Tracker</h1>
+
+    <h2 class="subheader">NDI Control Sources</h2>
+    <table id="tbl_sources" class="tbl">
+        %SOURCES%
+
+    <tr style="padding: 10px; background-color: rgb(218, 218, 218)">
+        <td colspan=100% style="padding: 10px;">
+            <h3>Add Source</h3>
+            Name: <input type="text" id="camname">
+            IP Address: <input type="text" id="camip">
+            <button onclick="addcam()">Add</button>
+        </td>
+    </tr>
+    <tr><td colspan=100%><br>
+    <button onclick="searchndi()">Search NDI on Local Network</button><br>
+<div id="ndi_search_results">(Click to start Search)</div></td></tr>
+    </table>
+
+
+</html>
