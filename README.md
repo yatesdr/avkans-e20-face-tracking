@@ -29,6 +29,29 @@ By default it serves on http://localhost:8091
 1) Add your NDI sources and give them a unique name and IP address.   You will see a preview load to confirm it's working.  
 2) Click the "Start Tracking" button for your assigned source to launch a thread that will search for faces and track them.
 
+# Security notes
+This application serves on the localnetwork and anybody can access it.   It's assumed this will be on a dedicated camera control / NDI network and security was largely not considered during development.
+
+# Integration with Stream Deck
+Using HTTP Get commands, the track can be started and stopped from StreamDeck by camera name or by camera IP.
+
+By IP Address (recommended)
+```
+# Start tracking
+http://localhost:8091/startTracking?ip=192.168.35.37
+
+# Stop tracking
+http://localhost:8091/stopTracking?ip=192.168.35.37
+```
+
+By Camera Name
+```
+# Start tracking
+http://localhost:8091/startTracking?name=cam1
+
+# Stop tracking
+http://localhost:8091/stopTracking?name=cam1
+```
 # Roadmap
 This is an alpha version, and needs to be cleaned up more, but is working fairly well in testing.
 
