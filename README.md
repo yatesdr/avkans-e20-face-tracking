@@ -13,7 +13,7 @@ The E-20 used in development was set to 1920x1080/30P using the dip switches on 
 
 # Requirements
 ```
-pip install opencv-python, numpy, sanic, ultralytics
+pip install opencv-python, numpy, sanic, ultralytics, lmbd
 ```
 
 # Usage
