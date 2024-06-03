@@ -30,7 +30,7 @@ By default it serves on http://localhost:8091
 2) Click the "Start Tracking" button for your assigned source to launch a thread that will search for faces and track them.
 
 # Security notes
-This application serves on the localnetwork and anybody can access it.   It's assumed this will be on a dedicated camera control / NDI network and security was largely not considered during development.
+This application serves on the local network and anybody on that network can access it.   It's assumed this will be on a dedicated camera control / NDI network and security was largely not considered during development.   Use at your own risk, and secure appropriately if needed.
 
 # Integration with Stream Deck
 Using HTTP Get commands, the track can be started and stopped from StreamDeck by camera name or by camera IP.
@@ -60,3 +60,4 @@ This is an alpha version, and needs to be cleaned up more, but is working fairly
 3) General stability and bug-fixing
 4) Create dockerized implementation
 5) Enable optional GPU support for those that have it.
+6) Improve StreamDeck integration functionality.
