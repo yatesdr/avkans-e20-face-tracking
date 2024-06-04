@@ -6,7 +6,7 @@ from lib.avkans_visca_utils import AvkansControl
 import json as jsonlib
 import cv2, time, threading, lmdb, pickle, base64
 from queue import Queue
-from ultralytics import YOLO
+#from ultralytics import YOLO
 import numpy as np
 
 debug=True
@@ -174,9 +174,9 @@ def mediapipe_tracker(cam_ip, zoom=False, debug=False):
             if actual_loc:
                 actual_loc=np.array(actual_loc)
             else:
-                if (debug): print("\r No face detected, passing",end=" ")
+                if (debug): print("\r No face detected, passing",end=" ", flush=True)
                 loop_rate = 1/(time.time()-tstart)
-                print("Loop rate: 2",loop_rate, end=" ")
+                print("\rLoop rate: 2",loop_rate, end="", flush=True)
                 continue
 
             # Don't need this unless we changed the zoom setting.
@@ -203,7 +203,7 @@ def mediapipe_tracker(cam_ip, zoom=False, debug=False):
                 ptz.send(ptz.cmd.ptz_to_abs_position(cam_correct_pos[0],cam_correct_pos[1],pan_speed,tilt_speed))
 
             loop_rate=1/(time.time()-tstart)
-            print("\rLoop rate: ",loop_rate," Hz", end="")
+            print("\rLoop rate: ",loop_rate," Hz", end="",flush=True)
         
         
         except Exception as e:
