@@ -4,10 +4,12 @@ from flask import Flask, redirect, request
 from lib.avkans_ndi_utils import AvkansCamera
 from lib.avkans_visca_utils import AvkansControl
 import json as jsonlib
-import os, cv2, time, threading, lmdb, pickle, base64, operator
+import cv2, time, threading, lmdb, pickle, base64
 from queue import Queue
 from ultralytics import YOLO
 import numpy as np
+
+debug=True
 
 # Mediapipe models via python's face-detection-tflite models
 from fdlite import FaceDetection, FaceDetectionModel
@@ -112,7 +114,7 @@ def yolo_tracker(cam_ip):
             exit()
 
 # A tracking thread using google mediapipe.
-def mediapipe_tracker(cam_ip, zoom=False):
+def mediapipe_tracker(cam_ip, zoom=False, debug=False):
     print("MediaPipe tracker thread started on ",cam_ip)
 
     detect_faces = FaceDetection(model_type=FaceDetectionModel.FULL)
@@ -120,14 +122,14 @@ def mediapipe_tracker(cam_ip, zoom=False):
     ndi = AvkansCamera()
     ndi.connect_by_ip(cam_ip)
     frame = ndi.get_cv2_frame()  # First frame takes a second or two, pull it at inits.
-    ptz = AvkansControl(cam_ip) # Visca controller.
+    ptz = AvkansControl(cam_ip,debug=True) # Visca controller.
 
     # For debugging it's useful to start at home.   Disable for prod.
     ptz.send(ptz.cmd.ptz_zero_zero)
     ptz.wait_complete()
 
     hafov = ptz.ptz_get_hfov() # horizontal angular field of view.
-    print("hafov 1: ",hafov)
+    if (debug): print("hafov 1: ",hafov)
 
     error_vector=(None,None) # error is stored in this vector after successful detection.
     target_position=(0.5,0.5) # width,height in range 0 to 1.  Where do you want the center of the target in the frame?
@@ -141,56 +143,79 @@ def mediapipe_tracker(cam_ip, zoom=False):
 
     loop_rate=10 # starting value   
     while(True):
-        tstart=time.time()
-        if haltTrackingThread(cam_ip):
-            return(0)
 
-        # To most closely sync the current position with the frame, it's best to get position first
-        # position getting has the most latency.
-        cam_abs_pos,frame_ts = ptz.ptz_get_position(return_ts=True) # About 50ms or so usually.
-        if cam_abs_pos==None: # Sometimes the socket flakes.
-            print("[ Warning ] - Cam abs position was none: ",cam_abs_pos)
-            continue
+        try:
 
-        # Grab a matching frame right away - NDI frame grabbing is usually pretty quick, 5ms or so.
-        frame = ndi.get_cv2_frame()
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame.setflags(write=1)
+            tstart=time.time()
+            if haltTrackingThread(cam_ip):
+                return(0)
 
-        # Do inference.
-        actual_loc = detect_faces_mp(frame,detect_faces)
-        if actual_loc:
-            actual_loc=np.array(actual_loc)
-        else:
-            print("\r No face detected, passing",end=" ")
-            loop_rate = 1/(time.time()-tstart)
-            print("Loop rate: 2",loop_rate, end=" ")
-            continue
+            # To most closely sync the current position with the frame, it's best to get position first
+            # position getting has the most latency.
+            
+            resp = ptz.ptz_get_position(return_ts=True) # About 50ms or so usually.
+            if resp and len(resp)==2:
+                cam_abs_pos,frame_ts = resp[0],resp[1]
+            else:
+                print("[ Error ] - Returned invalid response in ptz_get_position(); ",resp)
+                continue
 
-        hafov = ptz.ptz_get_hfov() # horizontal angular field of view.
-        vafov = 9./16.*hafov # vertical angular field of view, assumes 16:9 aspect ratio and rectilinear lens.
+            if cam_abs_pos==None: # Sometimes the socket flakes.
+                print("[ Error ] - Cam abs position was False: ",cam_abs_pos)
+                continue
 
-        error_vector = actual_loc-target_loc # Compute error vector.
-        permitted_error = allowed_error * np.array((frame.shape[1],frame.shape[0]))
-        dx = float(hafov*error_vector[0])/float(frame.shape[1]) # pan error in degrees
-        dy = -float(vafov*error_vector[1])/float(frame.shape[0]) # tilt error in degrees
-        cam_abs_pos = np.array(cam_abs_pos)
-        cam_correct_pos = cam_abs_pos + np.array((dx,dy))
+            # Grab a matching frame right away - NDI frame grabbing is usually pretty quick, 5ms or so.
+            frame = ndi.get_cv2_frame()
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame.setflags(write=1)
 
-        # If we are outside the allowable error, command a correction.
-        if (abs(error_vector[0]) > permitted_error[0] or abs(error_vector[1]) > permitted_error[1]):
-            # we want our correction to take about 3x the loop time.
-            # Loop at 10hz means we want 0.3s in our movement command.
-            # To accomplish, compute angular movement and convert to cam speeds for pan and tilt.
-            pan_angular_error = abs(error_vector[0])/frame.shape[1]*hafov # degrees
-            tilt_angular_error = abs(error_vector[1])/frame.shape[0]*vafov # degrees
-            pan_speed = ptz.pan_deg_per_sec_to_speed(pan_angular_error*loop_rate/6.)
-            tilt_speed = ptz.tilt_deg_per_sec_to_speed(tilt_angular_error*loop_rate/6.)
+            # Do inference.
+            actual_loc = detect_faces_mp(frame,detect_faces)
+            if actual_loc:
+                actual_loc=np.array(actual_loc)
+            else:
+                if (debug): print("\r No face detected, passing",end=" ")
+                loop_rate = 1/(time.time()-tstart)
+                print("Loop rate: 2",loop_rate, end=" ")
+                continue
 
-            ptz.send(ptz.cmd.ptz_to_abs_position(cam_correct_pos[0],cam_correct_pos[1],pan_speed,tilt_speed))
+            # Don't need this unless we changed the zoom setting.
+            #hafov = ptz.ptz_get_hfov() # horizontal angular field of view.
+            #vafov = 9./16.*hafov # vertical angular field of view, assumes 16:9 aspect ratio and rectilinear lens.
 
-        loop_rate=1/(time.time()-tstart)
-        print("\rLoop rate: ",loop_rate," Hz", end="")
+            error_vector = actual_loc-target_loc # Compute error vector.
+            permitted_error = allowed_error * np.array((frame.shape[1],frame.shape[0]))
+            dx = float(hafov*error_vector[0])/float(frame.shape[1]) # pan error in degrees
+            dy = -float(vafov*error_vector[1])/float(frame.shape[0]) # tilt error in degrees
+            cam_abs_pos = np.array(cam_abs_pos)
+            cam_correct_pos = cam_abs_pos + np.array((dx,dy))
+
+            # If we are outside the allowable error, command a correction.
+            if (abs(error_vector[0]) > permitted_error[0] or abs(error_vector[1]) > permitted_error[1]):
+                # we want our correction to take about 3x the loop time.
+                # Loop at 10hz means we want 0.3s in our movement command.
+                # To accomplish, compute angular movement and convert to cam speeds for pan and tilt.
+                pan_angular_error = abs(error_vector[0])/frame.shape[1]*hafov # degrees
+                tilt_angular_error = abs(error_vector[1])/frame.shape[0]*vafov # degrees
+                pan_speed = ptz.pan_deg_per_sec_to_speed(pan_angular_error*loop_rate/6.)
+                tilt_speed = ptz.tilt_deg_per_sec_to_speed(tilt_angular_error*loop_rate/6.)
+
+                ptz.send(ptz.cmd.ptz_to_abs_position(cam_correct_pos[0],cam_correct_pos[1],pan_speed,tilt_speed))
+
+            loop_rate=1/(time.time()-tstart)
+            print("\rLoop rate: ",loop_rate," Hz", end="")
+        
+        
+        except Exception as e:
+            print("\n################ EXCEPTION OCCURRED ###############")
+            print(e)
+            print("\n")
+            time.sleep(10)
+            print("\n ### RESUMING ###")
+            ptz.socket_flush()
+            ptz.s = ptz.getsocket()
+
+
 
         
 
@@ -475,7 +500,7 @@ def startTracking():
     # Spawn separate thread for tracking code
     sources[idx]['haltTrackingThread']=False
 
-    T = threading.Thread(target=mediapipe_tracker,args=(cam_ip,), daemon=True)
+    T = threading.Thread(target=mediapipe_tracker,args=(cam_ip,debug), daemon=True)
     T.start()
 
     store_sources_to_db(sources)
@@ -523,4 +548,9 @@ if __name__ == "__main__":
 
     # Use lightning db for inter-worker communication
     print("Opening database!!! ")
-    app.run(host="0.0.0.0",port=8091,debug=True)
+    sources=load_sources_from_db()
+    for item in sources:
+        item['haltTrackingThread']=None
+    store_sources_to_db(sources)
+
+    app.run(host="0.0.0.0",port=8091,debug=debug)
