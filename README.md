@@ -1,5 +1,5 @@
 # avkans-e20-face-tracking
-A simple web interface for Yolo-V8 face tracking implementation for AVKans E-20 Cameras using NDI and Visca TCP.   This application depends on geometry and characteristics of the E-20 Camera specifically, but you're welcome to try it out with other cameras or fork the repo to apply it to new cameras.
+A simple web interface for Yolo-V8 or Google Mediapipe face tracking implementation for AVKans E-20 Cameras using NDI and Visca TCP.   This application depends on geometry and characteristics of the E-20 Camera specifically, but you're welcome to try it out with other cameras or fork the repo to apply it to new cameras.
 
 This code is not endorsed or distributed by AVKans, it simply uses their hardware.
 
