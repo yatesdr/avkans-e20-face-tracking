@@ -6,15 +6,15 @@ import time
 cam1=AvkansControl("192.168.35.37")
 
 print("Powering down")
-cam1.send_raw(cam1.cmd.power_off)
-time.sleep(10)
-
-print("Powering up")
-cam1.send_raw(cam1.cmd.power_on)
-time.sleep(10)
-
-print("Resetting")
-cam1.send_raw(cam1.cmd.ptz_reset)
-cam1.socket_flush()
+cam1.send(cam1.cmd.power_off)
+cam1.wait_complete()
 time.sleep(5)
 
+print("Powering up")
+cam1.send(cam1.cmd.power_on)
+cam1.wait_complete()
+time.sleep(5)
+
+print("Resetting")
+cam1.send(cam1.cmd.ptz_reset)
+time.sleep(5)
