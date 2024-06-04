@@ -55,8 +55,8 @@ http://localhost:8091/stopTracking?name=cam1
 # Roadmap
 This is an alpha version, and needs to be cleaned up more, but is working fairly well in testing.
 
-1) Add support for mediapipe inference instead
-2) Add support for mult-face tracking
+1) (Complete) Add support for mediapipe inference instead
+2) (Complete - Untested) Add support for mult-face tracking
 3) General stability and bug-fixing
 4) Create dockerized implementation
 5) Enable optional GPU support for those that have it.
