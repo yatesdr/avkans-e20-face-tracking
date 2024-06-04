@@ -26,6 +26,7 @@ class AvkansControl:
                 self.tcp_thread(ip,port,in_q,out_q)
             except BaseException as e:
                 print('{!r}; restarting thread'.format(e))
+                time.sleep(3)
             else:
                 print('Bad thread, restarting')
         return twrapper
@@ -34,35 +35,63 @@ class AvkansControl:
     def tcp_thread(self,ip,port,in_q:queue.Queue,out_q:queue.Queue):
 
         # Open a socket
+        print("R1 ", end="",flush=True)
         s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET,socket.SO_KEEPALIVE,1)
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        #s.setsockopt(socket.SOL_SOCKET,socket.SO_KEEPALIVE,1)
+        #s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        print("R2 ", end="",flush=True)
         s.settimeout(0.5)
+        print("R3 ", end="", flush=True)
         s.connect((ip,port))
+        print("R4 ", end="", flush=True)
 
         # Listens and pushes complete messages to q
         buff=[]
         msg=[]
+        
+        sock_miss=0
+
         while(True):
             # Send data in the out_q
             while (not out_q.empty()):
+                #print("SENDING 1 ",end="",flush=True)
                 omsg = out_q.get()
                 s.sendall(omsg)
+                #print("SENDING 2 ",end="",flush=True)
 
             # Check for data waiting to be read
-            ready = select.select([s],[],[],0.001)
-            if ready[0]:
-                buff+=s.recv(1024)
-                print("Buff: ",buff)
-                if len(buff)==0:
-                    raise Exception("TCP Socket buffer was indicated as ready but nothing returned.   Bad socket?")
+            ready = select.select([s],[],[],0.01)
 
-                while len(buff)>0:
+            if not ready[0]:
+                sock_miss+=1
+            
+            if (sock_miss > 1024):
+                s.shutdown(socket.SHUT_RDWR)
+                s.close()
+                raise Exception("Sock miss too much, hung socket?")
+            
+            #print("RECV 1 ",end="",flush=True)
+            if ready[0]:
+                
+                #print("RECV 2 ",end="",flush=True)
+                buff+=s.recv(1024)
+                #print("Buff: ",buff)
+                if len(buff)==0:
+                    s.shutdown(socket.SHUT_RDWR)
+                    s.close()
+                    raise Exception("TCP Socket buffer was indicated as ready but nothing returned.   Bad socket?")
+                
+                while len(buff)>0:    
+                    sock_miss=0
                     msg.append(buff[0])
                     buff=buff[1:]
                     if msg[-1]==b'': # Socket hang
+                        print("RECV3 ",end="", flush=True)
+                        s.shutdown(socket.SHUT_RDWR)
+                        s.close()
                         raise Exception("[ Exception ] - Socket returned empty byte - exiting tcp_thread()")
                     if msg[-1]==0xFF: # End of message footer.
+                        #print("MSGCOMPLETE ",end="",flush=True)
                         in_q.put(msg)
                         msg=[]
                     
@@ -80,12 +109,16 @@ class AvkansControl:
     # but will block until the packet footer is received.
     def recv(self,blocking=True):
         if (blocking):
-            return self.in_q.get()
+            try:
+                msg = self.in_q.get(timeout=0.5)
+                return msg
+            except queue.Empty:
+                return False
         else:
             if (self.in_q.empty()):
                 return False
             else:
-                return self.in_q.get()
+                return self.in_q.get(timeout=0.5)
             
     # Monitors for motion complete responses after commanding a move
     # with a monitored timeout (defaults to 60 seconds)
@@ -110,7 +143,7 @@ class AvkansControl:
     # timestamps at packet send and valid response received.
     def ptz_get_position(self, return_ts=False):
         ts1=time.time()
-        self.dump()
+        #self.dump()
         buff = self.send(self.cmd.q_ptz_pos)
         rereads=0
         max_rereads=3
@@ -182,7 +215,7 @@ class AvkansControl:
         zoom_count=0x4000 # Manual states 0x0 is full wide, 0x4000 is full tele
 
         buff=list()
-        self.dump()
+        #self.dump()
         buff+=self.send(self.cmd.q_zoom_pos)
 
         if len(buff)!=7:
