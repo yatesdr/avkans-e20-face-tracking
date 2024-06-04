@@ -6,7 +6,41 @@ class AvkansControl:
     ip_address=None
     port=None
     s = None
-    
+
+    # Manages the socket.
+    def getsocket(self):
+        if (self.is_socket_connected(self.s)):
+            return self.s
+        else:
+            print("[ Warning ] - Socket is closed or whatever.")
+            self.s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            self.s.setsockopt(socket.SOL_SOCKET,socket.SO_KEEPALIVE,1)
+            self.s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+            try:
+                self.s.connect((self.ip_address,self.port))
+            
+            except Exception as e:
+                print(e)
+
+            return self.s
+
+    # Hacky way to check on my socket, but it works.
+    def is_socket_connected(self,sock: socket.socket):
+        if not sock:
+            return False
+        try:
+            sock.setblocking(False)
+            data = sock.recv(1, socket.MSG_PEEK)
+            return False if data == b'' else True
+        except BlockingIOError:
+            sock.setblocking(True)
+            return True
+        except (ConnectionResetError, ConnectionError, ConnectionAbortedError):
+            return False
+        finally:
+            sock.setblocking(True)
+
     # Helper sub-class for forming TCP Commands compatible with AVKans cameras.
     # Note:  Does not run commands, just makes them.   To run commands, use the base class.
     # In some cases, does not return any value (setting ptz speeds, for example) but mostly it
@@ -16,9 +50,12 @@ class AvkansControl:
         def __init__(self):
             pass
 
+        # Every command is a tuple consisting of a byte array and the expected response.
+        # If more than one response is expected, "ack" and "values", then the response can be a list of lengths.
+
         # Power control
-        power_on    =bytearray.fromhex(f"81 01 04 00 02 FF")
-        power_off   =bytearray.fromhex(f"81 01 04 00 03 FF")
+        power_on    = bytearray.fromhex(f"81 01 04 00 02 FF")
+        power_off   = bytearray.fromhex(f"81 01 04 00 03 FF")
 
         # Zoom control
         zoom_stop   =bytearray.fromhex(f"81 01 04 00 03 FF")
@@ -125,7 +162,7 @@ class AvkansControl:
         def ptz_downright(self,pan_speed:float,tilt_speed:float):
             return bytearray.fromhex(f"81 01 06 01 {int(pan_speed*24.):02x} {int(tilt_speed*20.):02x} 02 02 FF")
         
-        ptz_stop        =bytearray.fromhex(f"81 01 06 01 {'00'} {'00'} 03 03 FF")
+        ptz_stop        =bytearray.fromhex(f"81 01 06 01 {'01'} {'01'} 03 03 FF")
 
         # PTZ Home does work, but has a nasty bug when called from deep CCW tilt.
         # Recommend to use ptz_zero_zero instead, but home works most of the time.
@@ -204,8 +241,8 @@ class AvkansControl:
             if (tilt_speed>1): tilt_speed=1.
             if (tilt_speed<0): tilt_speed=0.
 
-            print("Pan position cmd: ",hex(panpos))
-            print("Tilt position cmd: ",hex(tiltpos))
+            #print("Pan position cmd: ",hex(panpos))
+            #print("Tilt position cmd: ",hex(tiltpos))
 
             y1=f'{(panpos&0xF000)>>12:02x}'
             y2=f'{(panpos&0xF00)>>8:02x}'
@@ -216,7 +253,7 @@ class AvkansControl:
             z2=f'{(tiltpos&0xF00)>>8:02x}'
             z3=f'{(tiltpos&0xF0)>>4:02x}'
             z4=f'{(tiltpos&0xF):02x}'
-            print("Debug:  moving to YYYY , ZZZZ: ",y1,y2,y3,y4,",",z1,z2,z3,z4)
+            #print("Debug:  moving to YYYY , ZZZZ: ",y1,y2,y3,y4,",",z1,z2,z3,z4)
             return bytearray.fromhex(f'81 01 06 02 {int(pan_speed*24.):02x} {int(tilt_speed*20.):02x} {y1} {y2} {y3} {y4} {z1} {z2} {z3} {z4} FF')
         
         # Intended for smaller moves, limited to +/- 30 degrees in pan and +/- 15 degrees in tilt.
@@ -290,142 +327,179 @@ class AvkansControl:
         q_wb_mode       =bytearray.fromhex(f"81 09 04 35 FF")
         q_ptz_pos       =bytearray.fromhex(f"81 09 06 12 FF")
         q_ptz_position= q_ptz_pos
-    
+
+        r_ack = bytes.fromhex(f"90 40 FF")
+        r_complete = bytearray.fromhex(f"90 50 FF")
+        r_err_syntax = bytearray.fromhex(f"90 60 02 FF")
+        r_err_cmd_buffer_full = bytearray.fromhex(f"90 60 03 FF")
+        r_err_cmd_canceled = bytearray.fromhex(f"90 60 04 FF")
+        r_err_nosocket = bytearray.fromhex(f"90 60 05 FF")
+        r_err_cmd_noexec = bytearray.fromhex(f"90 60 41 FF")
+
+        def resp_text(s,packet:bytearray):
+            if len(packet)==3 \
+                and packet[0]==s.r_ack[0] \
+                and packet[1]&0xF0==s.r_ack[1] \
+                and packet[2]==s.r_ack[2]: return "ACK"
+            
+                #elif packet[0]==s.r_complete[0] and packet[1]&0xF0==s.r_complete[1] and packet[2]==s.r_complete[2]: return "COMPLETE"
+            
+            elif len(packet)==4:
+                return "Len 4"
+            
 
     def __init__(self,ip_address,port=1259):
         self.ip_address=ip_address
         self.port=port
         self.cmd=self.AvkansTCPCommands()
 
-    def connect(self):
-        self.s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        self.s.connect((self.ip_address,self.port))
-        
-    # Sends raw packet and waits for ack by default.   Returns True for successful Ack or False for any other value.
-    # If read_ack is set to False, the raw response is returned unread.   This is useful for query commands.
-    def send_raw(self,raw_packet,read_ack=True):
+    # Sends raw packet over the socket.
+    #def send_raw(self,raw_packet):
+    #    if not self.s:
+    #        self.connect()
+    #    s = self.s
+    #    s.sendall(raw_packet)
 
-        if not self.s:
-            self.connect()
-        s = self.s
-        s.sendall(raw_packet)
-
-        buff = []
-
-        # By default, consume the ack and return True when received.
-        if (read_ack):
-            buff += s.recv(3)  # Expected ack is [ 0x90 0x4x 0xFF ]
-            while(True):
-                if len(buff)>=3 and buff[0]==0x90 and buff[1]&0xF0==0x40 and buff[2]==0xFF:
-                        return True
-                elif len(buff)<3:
-                    buff+=s.recv(3-len(buff))
-                else:
-                    print("[ Warning ] - Dropping byte in send_raw waiting for ack.   Byte: ",hex(buff[0]))
-                    buff=buff[1:]
-        
-        # Some functions may need to process the response directly.
-        else:
-            resp = s.recv(1024)
-            return resp
+    # Receives raw data over the socket.
+    #def recv_raw(self,num_bytes=1024):
+    #    resp=self.s.recv(num_bytes)
+    #    return resp
     
-    # Blocking by default, if you call this with nothing to receive it can cause a hang.
-    # For clearing the TCP socket use socket_flush() instead.
-    def recv_raw(self,num_bytes=1024):
-        resp=self.s.recv(num_bytes)
-        return resp
+    # Sends a packet and returns response.
+    def send(self,bytes:bytearray,read_response=True):
+        s=self.getsocket()
+        s.sendall(bytes)
+        return self.recv()
     
-    # Monitors for motion complete responses after commanding a move
-    # with a monitored timeout (defaults to 60 seconds)
-    def wait_complete(self,timeout=60):
-        valid_complete = bytearray.fromhex("90 51 FF")
-        s = self.s
-        start_t=time.time()
+    # Reads the socket until it finds a start and end, then returns
+    # the complete message.
+    # If blocking=False, it will only start a read when data is available, 
+    # but will block until the packet footer is received.
+    def recv(self, blocking=True):
+        s=self.getsocket()
+        buff=[]
+        m=None
 
-        buff = list()
-        while True:
+        if (blocking):
+            # Read socket until we get 0x90 as the message start frame.
+            while (m:=s.recv(1)) and m!=b'\x90':
+                print("[ Warning ] - Discarding byte in recv: ",m)
+                print("[ > > > > ] Expected: ",b'\x90', "  Got: ",m)
 
-            ready=select.select([self.s],[],[],0.010)
-            if ready[0] and len(buff)<3:
-                buff += self.s.recv(3-len(buff))
+            buff+=m
+            while not buff or (buff[-1] != 0xFF):
+                buff+=s.recv(1)
+
+            buffbytes = bytearray(buff)
+            print("[ Notice ] - Message received: ",buffbytes.hex())
+            return bytearray(buffbytes)
+        
+        else: # Check to see if socket has any packets available.
+            ready=select.select([s],[],[],0.002)
+            if ready[0]:
+                print("[ Notice ] - Nonblocking recv dumped some data.")
+                return self.recv()
             
-            if len(buff)>=3 and bytearray(buff[0:3])==valid_complete:
-                return True
-        
-            if time.time()-start_t > timeout:
-                print("[ Warning ] - Timeout exceeded in wait_complete(): buff=",buff)
+            else:
+                #print("[ Notice ] - Nonblocking recv had no data available")
                 return False
 
+
+    # Monitors for motion complete responses after commanding a move
+    # with a monitored timeout (defaults to 60 seconds)
+    def wait_complete(self):
+        valid_complete = bytearray.fromhex("90 51 FF")
+        msg = self.recv()
+
+        if len(msg)==3 and msg[0]==0x90 and msg[1]&0xF0==0x50 and msg[2]==0xFF:
+            return True        
+        else:
+            print("[ Warning ] - wait_complete expected [90 5x FF] but received another message: ",msg.hex())
+            return False
+
+    def dump(self):
+        while(self.recv(blocking=False)):
+            pass
+    
     # Helper function to get camera current position and return it in degrees.
     # Response:  (pan,tilt) in degrees.
     # Optionally returns a timestamp estimating the time at position.   This timestamp can be useful 
     # for forecasting motion positions during moves, and is "guessed" by taking the midpoint of the 
     # timestamps at packet send and valid response received.
-    def ptz_get_abs_position(self, return_ts=False):
-        buff=list()
+    def ptz_get_position(self, return_ts=False):
         ts1=time.time()
-        buff+=self.send_raw(self.cmd.q_ptz_pos,read_ack=False)
-        while True:
-            if len(buff)<10:
-                buff+=self.s.recv(10-len(buff))
+        self.dump()
+        buff = self.send(self.cmd.q_ptz_pos)
 
-            if len(buff)>=10 and buff[0]==0x90 and buff[1]==0x50: # Valid response
-                ts2=time.time()
-                w=buff[2:6]; z=buff[6:10]
-                pan_pos= w[0]<<12 | w[1]<<8 | w[2]<<4 | w[3]
-                tilt_pos= z[0]<<12 | z[1]<<8 | z[2]<<4 | z[3]
+        if len(buff)!=11:
+            print("[ Warning ] - ptz_get_position expected 11 byte response, got ",len(buff))
+            print("               Dumping buffer: ",buff)
+            
+            # Try again?
+            while len(buff)!=11:
+                buff=self.recv()  
+        
+        if buff[1]==0x50: # Valid response
+            ts2=time.time()
+            w=buff[2:6]; z=buff[6:10]
+            pan_pos= w[0]<<12 | w[1]<<8 | w[2]<<4 | w[3]
+            tilt_pos= z[0]<<12 | z[1]<<8 | z[2]<<4 | z[3]
 
-                # Pan range for Avkans E20 is -175 to +175 degrees, and indicated by bytes w as follows:
-                # 0x0001 to 0x0990 = panned to right in 2447 steps over full range.   0x990=last step on pan right, for example.
-                # 0xFFFE to 0xF670 = pan to left in 2446 steps over full range.  0xFFFE=first step left, 0xF670=last step.
-                if pan_pos>=0 and pan_pos<=0x990:
-                    pan_angle = pan_pos/0x990*175
-                elif pan_pos>=0xF670 and pan_pos<=0xFFFF:
-                    pan_angle = -(0xFFFE-pan_pos)/(0xfffe-0xf670)*175
-                else: 
-                    raise Exception("Pan Angle was found as Nonetype! ",resp)
-                    pan_angle=None
+            # Pan range for Avkans E20 is -175 to +175 degrees, and indicated by bytes w as follows:
+            # 0x0001 to 0x0990 = panned to right in 2447 steps over full range.   0x990=last step on pan right, for example.
+            # 0xFFFE to 0xF670 = pan to left in 2446 steps over full range.  0xFFFE=first step left, 0xF670=last step.
+            if pan_pos>=0 and pan_pos<=0x990:
+                pan_angle = pan_pos/0x990*175
+            elif pan_pos>=0xF670 and pan_pos<=0xFFFF:
+                pan_angle = -(0xFFFE-pan_pos)/(0xfffe-0xf670)*175
+            else: 
+                raise Exception("Pan Angle was found as Nonetype! ",buff)
+                pan_angle=None
 
-                # Tilt range for Avkans E20 is -29.8 to +90 degrees, and indicated by bytes z as follows:
-                #       0x0001 to 0x0510 is tilt up from smallest to largest in 1295 steps.    0x510 is max tilt up.
-                #       0xFFFE to 0xFE51 is tilt down from smallest to largest in 429 steps.   FE51 is max down tilt.
-                if tilt_pos>=0 and tilt_pos<=0x510: # positive tilt
-                    tilt_angle = tilt_pos/0x510*90
-                elif tilt_pos>=0xFE51 and tilt_pos<=0xFFFF:
-                    tilt_angle = -(0xFFFE-tilt_pos)/(0xFFFE-0xFE51)*29.8
-                else: 
-                    raise Exception("Tilt angle was found as NoneType! ", resp)
-                    tilt_angle=None
+            # Tilt range for Avkans E20 is -29.8 to +90 degrees, and indicated by bytes z as follows:
+            #       0x0001 to 0x0510 is tilt up from smallest to largest in 1295 steps.    0x510 is max tilt up.
+            #       0xFFFE to 0xFE51 is tilt down from smallest to largest in 429 steps.   FE51 is max down tilt.
+            if tilt_pos>=0 and tilt_pos<=0x510: # positive tilt
+                tilt_angle = tilt_pos/0x510*90
+            elif tilt_pos>=0xFE51 and tilt_pos<=0xFFFF:
+                tilt_angle = -(0xFFFE-tilt_pos)/(0xFFFE-0xFE51)*29.8
+            else: 
+                raise Exception("Tilt angle was found as NoneType! ", buff)
+                tilt_angle=None
 
-                if return_ts:
-                    return (pan_angle,tilt_angle), (ts1+ts2)/2.
-                else:
-                    return (pan_angle,tilt_angle)
-
+            if return_ts:
+                return (pan_angle,tilt_angle), (ts1+ts2)/2.
             else:
-                print("[ Warning ] - Dropping bytes in ptz_get_abs_pos(): ",hex(buff[0]))
-                buff=buff[1:]
+                return (pan_angle,tilt_angle)
+        
+        else:
+            print("[ ERROR ] - ptz_get_position received malformed response: ", buff.hex())
+            
+            
+        print("[ Error ] - ptz_get_position returned outside of control.  ", buff)
+        return (False,False)
             
 
-        
+
     # Returns the magnification setting of current zoom (from 1 to 20x for E20)
     def ptz_get_zoom_mag(self):
         e20_zoom=20. # Advertised as 20x zoom range.
         zoom_count=0x4000 # Manual states 0x0 is full wide, 0x4000 is full tele
 
         buff=list()
-        buff+=self.send_raw(self.cmd.q_zoom_pos,read_ack=False)
+        self.dump()
+        buff+=self.send(self.cmd.q_zoom_pos)
 
-        while True:
-            if len(buff)<6:
-                buff+=self.recv_raw(6-len(buff))
-            elif len(buff)>=6 and buff[0]==0x90 and buff[1]&0xF0==0x50: # Valid response
-                z=buff[2:6]
-                zoom_pos= z[0]<<12 | z[1]<<8 | z[2]<<4 | z[3]
-                return (1+(e20_zoom-1)*zoom_pos/zoom_count)
-            else:
-                print("[ Warning ] - Dropping bytes in ptz_get_zoom_mag: ",hex(buff[0]))
-                buff=buff[1:] # Consume bytes.
+        if len(buff)!=7:
+            print("[ Warning ] - ptz_get_zoom_mag: expected response of 7, got ",len(buff))
+            print("[ > > > > > ] Dumping response: ",buff)
+
+        elif len(buff)==7 and buff[1]==0x50 and buff[6]==0xFF:
+            z=buff[2:6]
+            zoom_pos= z[0]<<12 | z[1]<<8 | z[2]<<4 | z[3]
+            return (1+(e20_zoom-1)*zoom_pos/zoom_count)
+        else:
+            print("[ Warning ] - Malformed response in ptz_get_zoom_mag: ",hex(buff))
 
 
     # Returns the horizontal angular field of view in degrees at the current lens setting.
@@ -433,31 +507,18 @@ class AvkansControl:
     # These assumptions have not been directly characterized with a real camera, but seem to work fine.
     def ptz_get_hfov(self):
         e20_fov=60.7 # FOV in manual at max wide zoom is specified as 60.7 degrees.
-        e20_zoom=20. # Advertised as 20x zoom range.
-        zoom_count=0x4000 # Manual states 0x0 is full wide, 0x4000 is full tele
-
-        buff = list()
-        buff+=self.send_raw(self.cmd.q_zoom_pos,read_ack=False)
-        
-        while (True):
-            if len(buff)<6:
-                buff+=self.s.recv(6-len(buff))
-            elif len(buff)>=6 and buff[0]==0x90 and buff[1]&0xF0==0x50: # Valid response
-                z=buff[2:6]
-                zoom_pos= z[0]<<12 | z[1]<<8 | z[2]<<4 | z[3]
-                angular_hfov = e20_fov/((1+(e20_zoom-1)*zoom_pos/zoom_count))
-                return angular_hfov
-            else:
-                print("[ Warning ] - Dropping bytes in ptz_get_hfov: ",hex(buff[0]))
-                buff=buff[1:]
-
-
+        mag = self.ptz_get_zoom_mag()
+        if (mag):
+            return e20_fov/mag
+        else:
+            return False
+    
     # Flushes socket with a 1ms timeout without processing data.
     # Returns true if data was flushed, false if it timed out.
+    # This is kinda dangerous to use, but is sometimes needed.
+    # Consider using recv(blocking=False) instead.
     def socket_flush(self):
-        if not self.s:
-            self.connect()
-        
+        s=self.getsocket()
         ready=select.select([self.s],[],[],0.001)
         if ready[0]:
             dump = self.s.recv(1024)
