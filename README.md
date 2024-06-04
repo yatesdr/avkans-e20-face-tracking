@@ -15,7 +15,7 @@ The E-20 used in development was set to 1920x1080/30P using the dip switches on 
 
 # Requirements
 ```
-pip install opencv-python, numpy, sanic, ultralytics, lmbd, ndi-python
+pip install opencv-python flask lmbd ndi-python face-detection-tflite
 ```
 
 # Usage
