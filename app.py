@@ -139,14 +139,16 @@ def tracker(cam_ip, zoom=False, debug=False, detector=None):
                 tilt_speed = ptz.tilt_deg_per_sec_to_speed(abs(cy/(5*loop_time)))
                 ptz.send(ptz.cmd.ptz_to_abs_position(cam_new_pos[0],cam_new_pos[1],pan_speed,tilt_speed),read_response=False)
         
+
         except Exception as e:
             print("\n################ SERIOUS EXCEPTION OCCURRED ###############")
             print(e)
             print("\n")
             time.sleep(10)
             print("\n ### RESUMING ###")
-            ptz.socket_flush()
-            ptz.s = ptz.getsocket()
+            #ptz.socket_flush()
+            #ptz.s = ptz.getsocket()
+            ptz.dump()
 
     
 def load_sources_from_db():
@@ -313,8 +315,6 @@ def getPreview():
     html_src_tag = f"""data:image/jpg;base64,{b64_image}"""
 
     return html_src_tag
-
-
 
 
 @app.get("/startTracking")

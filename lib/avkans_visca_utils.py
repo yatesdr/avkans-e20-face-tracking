@@ -1,4 +1,4 @@
-import socket, select, time, threading, queue
+import socket, select, time, threading, queue, asyncio
 socket.setdefaulttimeout(1)
 
 # Class for interacting with AVkans via Visca-TCP.   Implements the most useful sub-set of the
@@ -50,12 +50,18 @@ class AvkansControl:
         # Listens and pushes complete messages to q
         buff=[]
         msg=[]
-        
-        sock_miss=0
+
+        # Dump queues on reload
+        while not in_q.empty:
+            in_q.get()
+            asyncio.sleep(0.05)
+        while not out_q.empty:
+            out_q.get()
+            asyncio.sleep(0.05)
 
         while(True):
             # Send data in the out_q
-            while (not out_q.empty()):
+            if not out_q.empty():
                 #print("SENDING 1 ",end="",flush=True)
                 omsg = out_q.get()
                 s.sendall(omsg)
@@ -64,15 +70,6 @@ class AvkansControl:
             # Check for data waiting to be read
             ready = select.select([s],[],[],0.01)
 
-            #if not ready[0]:
-            #    sock_miss+=1
-            
-            if (sock_miss > 1024):
-                s.shutdown(socket.SHUT_RDWR)
-                s.close()
-                raise Exception("Sock miss too much, hung socket?")
-            
-            #print("RECV 1 ",end="",flush=True)
             if ready[0]:
                 
                 #print("RECV 2 ",end="",flush=True)
@@ -84,7 +81,6 @@ class AvkansControl:
                     raise Exception("TCP Socket buffer was indicated as ready but nothing returned.   Bad socket?")
                 
                 while len(buff)>0:    
-                    sock_miss=0
                     msg.append(buff[0])
                     buff=buff[1:]
                     if msg[-1]==b'': # Socket hang
@@ -106,6 +102,9 @@ class AvkansControl:
                             in_q.put(msg)
 
                         msg=[]
+            else:
+                print(".",end="")
+                asyncio.sleep(0.05)
                     
                     
 
