@@ -49,7 +49,7 @@ def tracker(cam_ip, zoom=False, debug=False, detector=None):
 
     # For debugging it's useful to start at home.   Disable for prod.
     if (debug):
-        ptz.send(ptz.cmd.ptz_zero_zero,read_response=False)
+        ptz.send(ptz.cmd.ptz_zero_zero)
 
     target_position=TARGET_POSITION_N
 
@@ -88,17 +88,10 @@ def tracker(cam_ip, zoom=False, debug=False, detector=None):
             resp = ptz.ptz_get_position(return_ts=True) # About 50ms or so usually.
             if resp and len(resp)==2:
                 cam_abs_pos,position_ts = resp[0],resp[1]
-            elif resp and len(resp)==3 and resp[1]&0xF0==0x50:  # 90 5x FF is move complete
-                    print("Got move complete!")
-                    move_complete=True
             else:
                 print("[ Error ] - Received invalid response in ptz_get_position(); ",resp)
                 print("[ > > > ] - Valid response should contain point coordinates and a timestamp:  (xxx,yyy), ts")
-                continue
-
-            if cam_abs_pos==None: # Sometimes the socket flakes.
-                print("[ Error ] - Valid response received, but cam position was invalid: ",cam_abs_pos)
-                print("[ > > > ] - This is usually a socket error, and is safe to ignore if it's infrequent")
+                print("[ > > > ] - A False response usually indicates a blocking socket problem.")
                 continue
 
             # Grab a matching frame right away - NDI frame grabbing is usually pretty quick, 5ms or so.
@@ -137,18 +130,18 @@ def tracker(cam_ip, zoom=False, debug=False, detector=None):
                 # For smooth movement, our correction should take about 5x the loop time.                
                 pan_speed = ptz.pan_deg_per_sec_to_speed(abs(cx/(5*loop_time)))
                 tilt_speed = ptz.tilt_deg_per_sec_to_speed(abs(cy/(5*loop_time)))
-                ptz.send(ptz.cmd.ptz_to_abs_position(cam_new_pos[0],cam_new_pos[1],pan_speed,tilt_speed),read_response=False)
-        
+                ptz.send(ptz.cmd.ptz_to_abs_position(cam_new_pos[0],cam_new_pos[1],pan_speed,tilt_speed))
+
 
         except Exception as e:
-            print("\n################ SERIOUS EXCEPTION OCCURRED ###############")
-            print(e)
+            print("\n################ SERIOUS EXCEPTION OCCURRED ###############",flush=True)
+            print(e,flush=True)
             print("\n")
-            time.sleep(10)
+            #time.sleep()
             print("\n ### RESUMING ###")
             #ptz.socket_flush()
             #ptz.s = ptz.getsocket()
-            ptz.dump()
+            #ptz.dump()
 
     
 def load_sources_from_db():

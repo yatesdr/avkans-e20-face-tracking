@@ -23,9 +23,13 @@ class AvkansControl:
     
     # Wrapper for managing the tcp thread.
     def twrapper(self,ip,port,in_q,out_q):
+
+        self.in_q=in_q
+        self.out_q=out_q
         while (True):
             try:
-                self.tcp_thread(ip,port,in_q,out_q)
+
+                self.tcp_thread(ip,port,self.in_q,self.out_q)
             except BaseException as e:
                 print('{!r}; restarting thread'.format(e))
                 time.sleep(3)
@@ -40,12 +44,13 @@ class AvkansControl:
         print("R1 ", end="",flush=True)
         s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         #s.setsockopt(socket.SOL_SOCKET,socket.SO_KEEPALIVE,1)
-        #s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         print("R2 ", end="",flush=True)
         s.settimeout(0.5)
         print("R3 ", end="", flush=True)
         s.connect((ip,port))
         print("R4 ", end="", flush=True)
+        self.s=s
 
         # Listens and pushes complete messages to q
         buff=[]
@@ -54,25 +59,28 @@ class AvkansControl:
         # Dump queues on reload
         while not in_q.empty:
             print("Dumping in_q...",flush=True)
-            in_q.get()
+            in_q.get(timeout=0.5)
             asyncio.sleep(0.05)
         print("Done.",flush=True)
         while not out_q.empty:
             print("Dumping out_q...",flush=True)
-            out_q.get()
+            out_q.get(timeout=0.5)
             asyncio.sleep(0.05)
         print("Done.",flush=True)
+        sock_miss=0
 
+        #self.in_q.put(bytearray.fromhex("90 51 FF"))
+        
         while(True):
             # Send data in the out_q
             if not out_q.empty():
                 #print("SENDING 1 ",end="",flush=True)
-                omsg = out_q.get()
+                omsg = out_q.get(timeout=0.5)
                 s.sendall(omsg)
-                #print("SENDING 2 ",end="",flush=True)
+                #print("SENDING 2 ", omsg, end="",flush=True)
 
             # Check for data waiting to be read
-            ready = select.select([s],[],[],0.01)
+            ready = select.select([self.s],[],[],0.01)
 
             if ready[0]:
                 
@@ -80,16 +88,17 @@ class AvkansControl:
                 buff+=s.recv(1024)
                 #print("Buff: ",buff)
                 if len(buff)==0:
-                    s.shutdown(socket.SHUT_RDWR)
+                    #s.shutdown(socket.SHUT_RDWR)
                     s.close()
                     raise Exception("TCP Socket buffer was indicated as ready but nothing returned.   Bad socket?")
                 
                 while len(buff)>0:    
+                    sock_miss=0
                     msg.append(buff[0])
                     buff=buff[1:]
                     if msg[-1]==b'': # Socket hang
                         print("RECV3 ",end="", flush=True)
-                        s.shutdown(socket.SHUT_RDWR)
+                        #s.shutdown(socket.SHUT_RDWR)
                         s.close()
                         raise Exception("[ Exception ] - Socket returned empty byte - exiting tcp_thread()")
                     if msg[-1]==0xFF: # End of message footer.
@@ -102,41 +111,43 @@ class AvkansControl:
                         elif "COMPLETE" in self.discard_packets and msg and len(msg)==3 and msg[1]&0xF0==0x50:
                             #print("[ Notice ]:  Discarding COMPLETE based on discard_packet settings: ",msg)
                             pass
+                        elif "ERRORS" in self.discard_packets and msg and len(msg)==4 and msg[1]&0xF0==0x60:
+                            print("[ Notice ]:  Discarding ERROR packet based on discard_packet settings: ",msg)
+                            pass
+                        elif msg and len(msg)==4 and msg[1]&0xF0==0x60:
+                            print("[ WARNING ]:  ERROR packet received - Dropping from queue: ",msg)
                         else:
                             in_q.put(msg)
 
                         msg=[]
             else:
                 print(".",end="",flush=True)
+                sock_miss+=1
                 asyncio.sleep(0.05)
+                if sock_miss > 100:
+                    print("[ ERROR ] - Socket missed too many times in read.   Restarting TCP thread.")
+                    return 0
                     
                     
 
     # Sends a packet and reads and returns a message response.
-    def send(self,bytes:bytearray,read_response=True):
+    def send(self,bytes:bytearray):
+        #if (self.debug): print("[ INFO ] - Sending bytes in ptz.send(): ",bytes, end="")
         self.out_q.put(bytes)
-        if read_response:
-            return self.in_q.get()
 
     # Reads the socket until it finds a start and end, then returns
     # the complete message.
     # If blocking=False, it will only start a read when data is available, 
     # but will block until the packet footer is received.
-    def recv(self,blocking=True):
-        if (blocking):
-            try:
-                print("Blocking in recv()...")
-                msg = self.in_q.get(timeout=0.5)
-                print("Done")
-                return msg
-            except queue.Empty:
-                return False
-        else:
-            if (self.in_q.empty()):
-                return False
-            else:
-                return self.in_q.get(timeout=0.5)
+    def recv(self,timeout=1):
+        try:
+            m=self.in_q.get(timeout=timeout)
+            return m
+        except queue.Empty:
+            print("[ WARNING ] - Queue should not be empty in recv call: ",self.in_q,timeout)
+            return False
             
+
     # Monitors for motion complete responses after commanding a move
     # with a monitored timeout (defaults to 60 seconds)
     def wait_complete(self):
@@ -150,8 +161,8 @@ class AvkansControl:
             return False
 
     def dump(self):
-        while(self.recv(blocking=False)):
-            pass
+        while(not self.in_q.empty):
+            self.recv()
     
     # Helper function to get camera current position and return it in degrees.
     # Response:  (pan,tilt) in degrees.
@@ -160,31 +171,23 @@ class AvkansControl:
     # timestamps at packet send and valid response received.
     def ptz_get_position(self, return_ts=False):
         ts1=time.time()
-        #self.dump()
-        buff = self.send(self.cmd.q_ptz_pos)
-        rereads=0
-        max_rereads=3
-        while buff and len(buff)==3 and rereads<max_rereads:
-            if (buff[1]&0xF0==0x40 and len(buff)==3): # Received an ACK, okay to drop.
-                print("[ Warning ] - Received unexpected ACK in ptz_get_position: ",buff)
-                buff=self.recv(blocking=False)
-                rereads+=1
-            elif (buff[1]&0xF0==0x50 and len(buff)==3): # Received a move complete, safe to drop
-                print("[ Warning ] - Received unexpected COMPLETION in ptz_get_position: ",buff)
-                buff=self.recv(blocking=False)
-                rereads+=1
+        self.dump()
+        self.send(self.cmd.q_ptz_pos)
+        buff=self.recv()
 
-        if (rereads>max_rereads):
-            raise Exception(f"Re-read limit exceeded in ptz_get_position.   Buff: {buff}")
-        
+        #try:
+        #    buff=self.recv(timeout=1)
+        #except:
+        #    print("[ WARNING ] - No position response received!!!")
+        #    return False
 
         if buff and len(buff)!=11:
-            print("[ Warning ] - ptz_get_position expected 11 byte response, got ",len(buff),flush=True)
+            print("[ WARNING ] - ptz_get_position expected 11 byte response, got ",len(buff),flush=True)
             print("               Dumping buffer: ",buff, flush=True)
             return False
             #raise Exception(f"Buff does not meet length requirements in ptz_get_position.   Buff: {buff}")
         
-        if buff and buff[1]==0x50: # Valid response
+        elif buff and len(buff)==11 and buff[1]==0x50: # Valid response
             ts2=time.time()
             w=buff[2:6]; z=buff[6:10]
             pan_pos= w[0]<<12 | w[1]<<8 | w[2]<<4 | w[3]
@@ -231,20 +234,21 @@ class AvkansControl:
         e20_zoom=20. # Advertised as 20x zoom range.
         zoom_count=0x4000 # Manual states 0x0 is full wide, 0x4000 is full tele
 
-        buff=list()
-        #self.dump()
-        buff+=self.send(self.cmd.q_zoom_pos)
+        self.dump()
+        self.send(self.cmd.q_zoom_pos)
+        buff=self.recv()
 
-        if len(buff)!=7:
+        if buff and len(buff)!=7:
             print("[ Warning ] - ptz_get_zoom_mag: expected response of 7, got ",len(buff))
             print("[ > > > > > ] Dumping response: ",buff)
 
-        elif len(buff)==7 and buff[1]==0x50 and buff[6]==0xFF:
+        elif buff and len(buff)==7 and buff[1]==0x50 and buff[6]==0xFF:
             z=buff[2:6]
             zoom_pos= z[0]<<12 | z[1]<<8 | z[2]<<4 | z[3]
             return (1+(e20_zoom-1)*zoom_pos/zoom_count)
         else:
-            print("[ Warning ] - Malformed response in ptz_get_zoom_mag: ",hex(buff))
+            print("[ Warning ] - Malformed response in ptz_get_zoom_mag: ",buff)
+            return False
 
 
     # Returns the horizontal angular field of view in degrees at the current lens setting.
