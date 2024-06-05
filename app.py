@@ -8,11 +8,11 @@ from queue import Queue
 #from ultralytics import YOLO
 import numpy as np
 
-debug=False
+debug=True
 
 #### APP SETTINGS ####
 TARGET_POSITION_N = [0.5,0.5]   # Where do you want the center of the face? Normalized in 0,1
-ALLOWED_ERROR_N = 0.1   # How far away can it be before issuing a correction? Normalized in 0 to 1
+ALLOWED_ERROR_N = 0.1   # How far away can it be before issuing a correction? Normalized in 0,1
 
 ## Set the face detector model
 from lib.inference_fdlite import fdlite_inference
@@ -49,8 +49,8 @@ def tracker(cam_ip, zoom=False, debug=False, detector=None):
 
     # For debugging it's useful to start at home.   Disable for prod.
     if (debug):
-        ptz.send(ptz.cmd.ptz_zero_zero)
-        ptz.wait_complete()
+        ptz.send(ptz.cmd.ptz_zero_zero,read_response=False)
+        #ptz.wait_complete()
 
     target_position=TARGET_POSITION_N
 
