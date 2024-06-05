@@ -64,8 +64,8 @@ class AvkansControl:
             # Check for data waiting to be read
             ready = select.select([s],[],[],0.01)
 
-            if not ready[0]:
-                sock_miss+=1
+            #if not ready[0]:
+            #    sock_miss+=1
             
             if (sock_miss > 1024):
                 s.shutdown(socket.SHUT_RDWR)
@@ -122,7 +122,9 @@ class AvkansControl:
     def recv(self,blocking=True):
         if (blocking):
             try:
+                print("Blocking in recv()...")
                 msg = self.in_q.get(timeout=0.5)
+                print("Done")
                 return msg
             except queue.Empty:
                 return False

@@ -45,12 +45,11 @@ def tracker(cam_ip, zoom=False, debug=False, detector=None):
 
     # Get PTZ controller.
     # We are using servo style control, so do not need ACK packets.  The TCP loop can handle them.
-    ptz = AvkansControl(cam_ip,debug=True,discard_packets=['ACK','COMPLETE']) # Visca controller.
+    ptz = AvkansControl(cam_ip, debug=debug, discard_packets=['ACK','COMPLETE']) # Visca controller.
 
     # For debugging it's useful to start at home.   Disable for prod.
     if (debug):
         ptz.send(ptz.cmd.ptz_zero_zero,read_response=False)
-        #ptz.wait_complete()
 
     target_position=TARGET_POSITION_N
 
