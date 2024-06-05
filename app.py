@@ -78,7 +78,7 @@ def tracker(cam_ip, zoom=False, debug=False, detector=None):
             loop_time=time.time()-tstart
             if loop_time<=0: loop_time=0.1
 
-            print(f"Loop completed in: {loop_time*1000:.2f}ms", end="\r")
+            print("\r"+" "*50+f"\rLoop completed in: {loop_time*1000:.2f}ms", end="")
             tstart=time.time()
 
             # Check for halt messages in the queue by cam_ip.
