@@ -89,7 +89,7 @@ def tracker(cam_ip, zoom=False, debug=False, detector=None):
             if resp and len(resp)==2:
                 cam_abs_pos,position_ts = resp[0],resp[1]
             else:
-                print("[ Error ] - Received invalid response in ptz_get_position(); ",resp)
+                print("[ ERROR ] - Received invalid response in app from ptz_get_position(); ",resp)
                 print("[ > > > ] - Valid response should contain point coordinates and a timestamp:  (xxx,yyy), ts")
                 print("[ > > > ] - A False response usually indicates a blocking socket problem.")
                 continue

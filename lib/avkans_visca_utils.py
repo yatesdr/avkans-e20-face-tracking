@@ -115,7 +115,7 @@ class AvkansControl:
                             print("[ Notice ]:  Discarding ERROR packet based on discard_packet settings: ",msg)
                             pass
                         elif msg and len(msg)==4 and msg[1]&0xF0==0x60:
-                            print("[ WARNING ]:  ERROR packet received - Dropping from queue: ",msg)
+                            print("[ Warning ]:  'ERROR' packet received - Dropping from queue: ",msg)
                         else:
                             in_q.put(msg)
 
@@ -144,7 +144,7 @@ class AvkansControl:
             m=self.in_q.get(timeout=timeout)
             return m
         except queue.Empty:
-            print("[ WARNING ] - Queue should not be empty in recv call: ",self.in_q,timeout)
+            print("[ Warning ] - Queue should not be empty in recv call: ",self.in_q,timeout)
             return False
             
 
@@ -182,7 +182,7 @@ class AvkansControl:
         #    return False
 
         if buff and len(buff)!=11:
-            print("[ WARNING ] - ptz_get_position expected 11 byte response, got ",len(buff),flush=True)
+            print("[ Warning ] - ptz_get_position expected 11 byte response, got ",len(buff),flush=True)
             print("               Dumping buffer: ",buff, flush=True)
             return False
             #raise Exception(f"Buff does not meet length requirements in ptz_get_position.   Buff: {buff}")
@@ -201,7 +201,7 @@ class AvkansControl:
             elif pan_pos>=0xF670 and pan_pos<=0xFFFF:
                 pan_angle = -(0xFFFE-pan_pos)/(0xfffe-0xf670)*175
             else: 
-                raise Exception("Pan Angle was found as Nonetype! ",buff)
+                raise Exception("[ ERROR ] - Pan Angle was found as Nonetype! ",buff)
                 pan_angle=None
 
             # Tilt range for Avkans E20 is -29.8 to +90 degrees, and indicated by bytes z as follows:
@@ -212,7 +212,7 @@ class AvkansControl:
             elif tilt_pos>=0xFE51 and tilt_pos<=0xFFFF:
                 tilt_angle = -(0xFFFE-tilt_pos)/(0xFFFE-0xFE51)*29.8
             else: 
-                raise Exception("Tilt angle was found as NoneType! ", buff)
+                raise Exception("[ ERROR ] - Tilt angle was found as NoneType! ", buff)
                 tilt_angle=None
 
             if return_ts:
@@ -224,7 +224,7 @@ class AvkansControl:
             print("[ ERROR ] - ptz_get_position received malformed response: ", buff, flush=True)
             
             
-        print("[ Error ] - ptz_get_position returned outside of control.  ", buff, flush=True)
+        print("[ ERROR ] - ptz_get_position returned outside of control.  ", buff, flush=True)
         return False
             
 

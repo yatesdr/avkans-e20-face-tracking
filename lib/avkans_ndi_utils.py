@@ -22,15 +22,19 @@ class AvkansCamera:
 
         # Create find object, searching local and ip_address if passed in.
         if ip_address:
-            fco = ndi.NDIlib.FindCreate(show_local_sources=False, p_groups=None, p_extra_ips=ip_address)
+            fco = ndi.NDIlib.FindCreate(show_local_sources=True, p_groups=None, p_extra_ips=ip_address)
         else:
-            fco = ndi.NDIlib.FindCreate(show_local_sources=False, p_groups=None)
+            fco = ndi.NDIlib.FindCreate(show_local_sources=True, p_groups=None)
 
         ndi_find_obj = ndi.find_create_v2(fco)
+        
+        
 
         if ndi_find_obj is None:
             raise(Exception("NDI Find object failed to initialize.   This is probably due to a bad installation of NDIlib"))
         
+        ndi.find_wait_for_sources(ndi_find_obj,5000)
+
         self.ndi_sources = ndi.find_get_current_sources(ndi_find_obj)
 
         return self.ndi_sources
