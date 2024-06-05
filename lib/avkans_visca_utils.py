@@ -8,14 +8,16 @@ class AvkansControl:
     port=None
     s = None
     debug=False
+    discard_packets=None # List of packets, valid items are "ACK" or "COMPLETE" or both.
 
-    def __init__(self,ip_address,port=1259,debug=False):
+    def __init__(self,ip_address,port=1259,debug=False,discard_packets=[]):
         self.ip_address=ip_address
         self.port=port
         self.cmd=AvkansTCPCommands()
         self.debug=debug
         self.in_q=queue.Queue()
         self.out_q=queue.Queue()
+        self.discard_packets=discard_packets
         t = threading.Thread(target=self.twrapper, args=(self.ip_address,self.port,self.in_q,self.out_q),daemon=True)
         t.start()
     
@@ -92,7 +94,17 @@ class AvkansControl:
                         raise Exception("[ Exception ] - Socket returned empty byte - exiting tcp_thread()")
                     if msg[-1]==0xFF: # End of message footer.
                         #print("MSGCOMPLETE ",end="",flush=True)
-                        in_q.put(msg)
+                        
+                        # We can discard packets based on the discard_packets notes.
+                        if "ACK" in self.discard_packets and msg and len(msg)==3 and msg[1]&0xF0==0x40:
+                            #print("[ Notice ]:  Discarding ACK based on discard_packet settings: ",msg)
+                            pass
+                        elif "COMPLETE" in self.discard_packets and msg and len(msg)==3 and msg[1]&0xF0==0x50:
+                            #print("[ Notice ]:  Discarding COMPLETE based on discard_packet settings: ",msg)
+                            pass
+                        else:
+                            in_q.put(msg)
+
                         msg=[]
                     
                     
@@ -126,10 +138,10 @@ class AvkansControl:
         valid_complete = bytearray.fromhex("90 51 FF")
         msg = self.recv()
 
-        if len(msg)==3 and msg[0]==0x90 and msg[1]&0xF0==0x50 and msg[2]==0xFF:
+        if msg and len(msg)==3 and msg[0]==0x90 and msg[1]&0xF0==0x50 and msg[2]==0xFF:
             return True        
         else:
-            print("[ Warning ] - wait_complete expected [90 5x FF] but received another message: ",msg.hex())
+            print("[ Warning ] - wait_complete expected [90 5x FF] but received another message: ",msg)
             return False
 
     def dump(self):
