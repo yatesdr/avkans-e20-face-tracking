@@ -1,5 +1,5 @@
 # avkans-e20-face-tracking
-A simple web interface for Yolo-V8 or Google Mediapipe face tracking implementation for AVKans E-20 Cameras using NDI and Visca TCP.   This application depends on geometry and characteristics of the E-20 Camera specifically, but you're welcome to try it out with other cameras or fork the repo to apply it to new cameras.
+A simple web interface for face tracking on AVKans E-20 Cameras using NDI and Visca TCP.   This application depends on geometry and characteristics of the E-20 Camera specifically, but you're welcome to try it out with other cameras or fork the repo to apply it to new cameras.
 
 This code is not endorsed or distributed by AVKans, it simply uses their hardware.
 
@@ -14,8 +14,20 @@ The E-20 used in development was set to 1920x1080/30P using the dip switches on 
 
 
 # Requirements
+1)  Python 3.10
 ```
+git clone https://github.com/yatesdr/avkans-e20-face-tracking
+cd avkans-e20-face-tracking
+python3.10 -mvenv .venv
+source .venv/bin/activate
 pip install opencv-python flask lmbd ndi-python face-detection-tflite
+```
+
+Or, use the auto install script:
+```
+git clone https://github.com/yatesdr/avkans-e20-face-tracking
+cd avkans-e20-face-tracking
+./install.sh
 ```
 
 # Usage
