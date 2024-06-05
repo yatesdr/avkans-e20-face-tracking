@@ -53,11 +53,15 @@ class AvkansControl:
 
         # Dump queues on reload
         while not in_q.empty:
+            print("Dumping in_q...",flush=True)
             in_q.get()
             asyncio.sleep(0.05)
+        print("Done.",flush=True)
         while not out_q.empty:
+            print("Dumping out_q...",flush=True)
             out_q.get()
             asyncio.sleep(0.05)
+        print("Done.",flush=True)
 
         while(True):
             # Send data in the out_q
@@ -103,7 +107,7 @@ class AvkansControl:
 
                         msg=[]
             else:
-                print(".",end="")
+                print(".",end="",flush=True)
                 asyncio.sleep(0.05)
                     
                     
