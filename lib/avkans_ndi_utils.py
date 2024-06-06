@@ -22,22 +22,31 @@ class AvkansCamera:
 
         # Create find object, searching local and ip_address if passed in.
         if ip_address:
-            fco = ndi.NDIlib.FindCreate(show_local_sources=True, p_groups=None, p_extra_ips=ip_address)
+            fco = ndi.NDIlib.FindCreate(show_local_sources=False, p_groups=None, p_extra_ips=ip_address)
         else:
-            fco = ndi.NDIlib.FindCreate(show_local_sources=True, p_groups=None)
+            fco = ndi.NDIlib.FindCreate(show_local_sources=False, p_groups=None)
 
         ndi_find_obj = ndi.find_create_v2(fco)
         
-        
-
         if ndi_find_obj is None:
             raise(Exception("NDI Find object failed to initialize.   This is probably due to a bad installation of NDIlib"))
         
-        ndi.find_wait_for_sources(ndi_find_obj,5000)
-
-        self.ndi_sources = ndi.find_get_current_sources(ndi_find_obj)
-
-        return self.ndi_sources
+        tries=0
+        while (tries<=5): 
+            print("Searching...",end="")
+            if not ndi.find_wait_for_sources(ndi_find_obj,5000): # Search for 5000ms.
+                tries+=1
+                print("Nothing found")
+                continue
+            else:
+                self.ndi_sources = ndi.find_get_current_sources(ndi_find_obj)
+                if self.ndi_sources and ip_address:
+                    for idx,s in enumerate(self.ndi_sources):
+                        print("s: ",s,s.url_address)
+                        if s.url_address.split(":")[0] == ip_address:
+                            return True
+            
+        return False
     
     def get_sources_as_dict(self,ip_address:str=""):
         ndi_sources=self.search(ip_address)
