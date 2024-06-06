@@ -18,24 +18,27 @@ class AvkansControl:
         self.in_q=queue.Queue()
         self.out_q=queue.Queue()
         self.discard_packets=discard_packets
-        t = threading.Thread(target=self.twrapper, args=(self.ip_address,self.port,self.in_q,self.out_q),daemon=True)
+        self.halt = threading.Event()
+        self.halt.clear()
+        t = threading.Thread(target=self.twrapper, args=(self.ip_address,self.port,self.in_q,self.out_q,self.halt),daemon=True)
         t.start()
     
     # Wrapper for managing the tcp thread.
-    def twrapper(self,ip,port,in_q,out_q):
+    def twrapper(self,ip,port,in_q,out_q,halt):
 
         self.in_q=in_q
         self.out_q=out_q
-        while (True):
+        while (not halt.isSet()):
             try:
 
                 self.tcp_thread(ip,port,self.in_q,self.out_q)
             except BaseException as e:
                 print('{!r}; restarting thread'.format(e))
-                time.sleep(3)
+                #time.sleep(3)
             else:
                 print('Bad thread, restarting')
-        return twrapper
+        print("Exiting twrapper by halt command")
+        return
     
     # Receives all comms from Avkans camera, and puts complete messages into in q
     def tcp_thread(self,ip,port,in_q:queue.Queue,out_q:queue.Queue):
@@ -60,12 +63,12 @@ class AvkansControl:
         while not in_q.empty:
             print("Dumping in_q...",flush=True)
             in_q.get(timeout=0.5)
-            asyncio.sleep(0.05)
+            time.sleep(0.05)
         print("Done.",flush=True)
         while not out_q.empty:
             print("Dumping out_q...",flush=True)
             out_q.get(timeout=0.5)
-            asyncio.sleep(0.05)
+            time.sleep(0.05)
         print("Done.",flush=True)
         sock_miss=0
 
@@ -75,7 +78,7 @@ class AvkansControl:
             # Send data in the out_q
             if not out_q.empty():
                 #print("SENDING 1 ",end="",flush=True)
-                omsg = out_q.get(timeout=0.5)
+                omsg = out_q.get(timeout=0.2)
                 s.sendall(omsg)
                 #print("SENDING 2 ", omsg, end="",flush=True)
 
@@ -123,7 +126,7 @@ class AvkansControl:
             else:
                 print(".",end="",flush=True)
                 sock_miss+=1
-                asyncio.sleep(0.05)
+                #time.sleep(0.05)
                 if sock_miss > 100:
                     print("[ ERROR ] - Socket missed too many times in read.   Restarting TCP thread.")
                     return 0
@@ -141,7 +144,9 @@ class AvkansControl:
     # but will block until the packet footer is received.
     def recv(self,timeout=1):
         try:
+            #print("Checking queue...")
             m=self.in_q.get(timeout=timeout)
+            #print(m)
             return m
         except queue.Empty:
             print("[ Warning ] - Queue should not be empty in recv call: ",self.in_q,timeout)

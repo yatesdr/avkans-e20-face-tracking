@@ -49,7 +49,8 @@ class AvkansCamera:
         return False
     
     def get_sources_as_dict(self,ip_address:str=""):
-        ndi_sources=self.search(ip_address)
+        self.search(ip_address)
+        ndi_sources=self.ndi_sources
         print("ndi_sources:",ndi_sources)
         
         sl = list()

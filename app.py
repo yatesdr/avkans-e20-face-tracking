@@ -82,6 +82,7 @@ def tracker(cam_ip, zoom=False, debug=False, detector=None):
 
             # Check for halt messages in the queue by cam_ip.
             if haltTrackingThread(cam_ip):
+                ptz.halt.set()
                 return(0)
 
             # Position responses have the most latency, so do it first.            
